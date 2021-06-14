@@ -305,11 +305,13 @@ func peekOrder(heap *Heap) Order {
 
 func onTransaction(sell, buy Order, transactionNum float64) {
 
-	fmt.Printf("\nsellOid:%d\tbuyOid:%d", sell.OID, buy.OID)
-	fmt.Printf("\nsellUid:%d\tbuyUid:%d", sell.UID, buy.UID)
-	fmt.Printf("\nsellPrice:%f\tbuyPrice:%f", sell.Price, buy.Price)
-	fmt.Printf("\nsellhold:%f\tbuyhold:%f", sell.Num-transactionNum, buy.Num-transactionNum)
-	fmt.Printf("\nsellNum:%f\tbuyNum:%f\n\n", transactionNum, transactionNum)
+	func() {
+		fmt.Printf("\nsellOid:%d\tbuyOid:%d", sell.OID, buy.OID)
+		fmt.Printf("\nsellUid:%d\tbuyUid:%d", sell.UID, buy.UID)
+		fmt.Printf("\nsellPrice:%f\tbuyPrice:%f", sell.Price, buy.Price)
+		fmt.Printf("\nsellhold:%f\tbuyhold:%f", sell.Num-transactionNum, buy.Num-transactionNum)
+		fmt.Printf("\nsellNum:%f\tbuyNum:%f\n\n", transactionNum, transactionNum)
+	}()
 
 }
 
@@ -342,11 +344,15 @@ func transaction(sell, buy *Heap) {
 					sell.poll()
 				}
 
-				if sellTopOrder.Num <= 0 {
-					sell.poll()
+				if buyTopOrder.Num <= 0 {
+					buy.poll()
 				}
 				count++
 
+				fmt.Printf("buy heap sise is %d sell heap size is %d\n", buy.size, sell.size)
+
+			} else {
+				time.Sleep(time.Nanosecond * 10000)
 			}
 		} else {
 			time.Sleep(time.Nanosecond * 10000)
@@ -364,7 +370,7 @@ func buyTask(buyHeap *Heap) {
 		var item Order
 		item.Price = rand.Float64() * float64(100)
 		item.Time = time.Now().UnixNano()
-		item.Num = rand.Float64() * float64(100)
+		item.Num = rand.Float64() * float64(10)
 		item.OID = i
 		item.UID = rand.Intn(5)
 		item.Priority = item.Price * float64(time.Now().UnixNano()-item.Time)
@@ -381,7 +387,7 @@ func sellTask(sellHeap *Heap) {
 	for i := 0; i < 100000; i++ {
 
 		var item Order
-		item.Price = rand.Float64() * float64(10)
+		item.Price = rand.Float64() * float64(100)
 		item.Time = time.Now().UnixNano()
 		item.Num = rand.Float64() * float64(10)
 		item.OID = -1 * i
@@ -401,9 +407,9 @@ func main() {
 	sellHeap.initHeap(5)
 	buyHeap.flag = ROOT_VALUE_MAX
 	sellHeap.flag = ROOT_VALUE_MIN
-	go buyTask(&buyHeap)
+	buyTask(&buyHeap)
 
-	go sellTask(&sellHeap)
+	sellTask(&sellHeap)
 
 	transaction(&sellHeap, &buyHeap)
 
