@@ -1,9 +1,16 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"math/rand"
+	"os"
+	"os/signal"
+	"sync"
+	"syscall"
 	"time"
 )
 
@@ -68,6 +75,20 @@ func (this *Heap) peek() (IPriority, error) {
 	}
 
 	return this.heap[0], nil
+}
+
+func (this *Heap) updateHead(item IPriority) {
+	this.update(0, item)
+}
+
+func (this *Heap) update(index int, item IPriority) {
+	if this.size-1 < index {
+		return
+	}
+	if this.heap[index].getPriority() != item.getPriority() {
+		panic("cant update ,priority is not match")
+	}
+	this.heap[index] = item
 }
 
 /* 初始化,设置堆的容量 */
@@ -303,13 +324,41 @@ func peekOrder(heap *Heap) Order {
 
 }
 
+func pollOrder(heap *Heap) Order {
+	var nilOrder Order
+	if heap.size > 0 {
+		top, _ := heap.poll()
+		switch order := top.(type) {
+		case Order:
+			return order
+		default:
+			fmt.Println("unknown buyTopOrder type ")
+			return nilOrder
+		}
+	} else {
+		return nilOrder
+	}
+
+}
+
 func onTransaction(sell, buy Order, transactionNum float64) {
 
-	fmt.Printf("\nsellOid:%d\tbuyOid:%d", sell.OID, buy.OID)
-	fmt.Printf("\nsellUid:%d\tbuyUid:%d", sell.UID, buy.UID)
-	fmt.Printf("\nsellPrice:%f\tbuyPrice:%f", sell.Price, buy.Price)
-	fmt.Printf("\nsellhold:%f\tbuyhold:%f", sell.Num-transactionNum, buy.Num-transactionNum)
-	fmt.Printf("\nsellNum:%f\tbuyNum:%f\n\n", transactionNum, transactionNum)
+	var content = `
+	sellOid:%d	buyOid:%d
+	sellUid:%d	buyUid:%d
+	sellPrice:%f	buyPrice:%f
+	sellhold:%f	buyhold:%f
+	sellNum:%f	buyNum:%f
+	`
+	func() {
+		log.Printf(content,
+			sell.OID, buy.OID,
+			sell.UID, buy.UID,
+			sell.Price, buy.Price,
+			sell.Num-transactionNum, buy.Num-transactionNum,
+			transactionNum, transactionNum)
+
+	}()
 
 }
 
@@ -338,15 +387,45 @@ func transaction(sell, buy *Heap) {
 				sellTopOrder.Num = sellTopOrder.Num - transactionNum
 				buyTopOrder.Num = buyTopOrder.Num - transactionNum
 
-				if sellTopOrder.Num <= 0 {
-					sell.poll()
-				}
+				sell.updateHead(sellTopOrder)
+				buy.updateHead(buyTopOrder)
 
 				if sellTopOrder.Num <= 0 {
-					sell.poll()
+					//sell.poll()
+					pollSell := pollOrder(sell)
+					//test code
+					if pollSell.OID != sellTopOrder.OID {
+						log.Printf("sell Oid not match %v %v \n", pollSell.OID, sellTopOrder.OID)
+						break
+					}
+					if pollSell.Num != sellTopOrder.Num {
+						log.Printf("sell num not match %v %v \n", pollSell.Num, sellTopOrder.Num)
+						break
+					}
+				}
+
+				if buyTopOrder.Num <= 0 {
+					//buy.poll()
+					pollBuy := pollOrder(buy)
+					//test code
+					if pollBuy.OID != buyTopOrder.OID {
+						log.Printf("buy Oid not match %v %v \n", pollBuy.OID, buyTopOrder.OID)
+						break
+					}
+					if pollBuy.Num != buyTopOrder.Num {
+						log.Printf("buy Num not match %v %v \n", pollBuy.Num, buyTopOrder.Num)
+						break
+					}
 				}
 				count++
 
+				fmt.Printf("buy heap sise is %d sell heap size is %d\n", buy.size, sell.size)
+				m := copyAsMapTopPriceLimit(buy.heap, 5)
+				fmt.Printf("%s \n", formattedJson(&m))
+				m = copyAsMapTopPriceLimit(sell.heap, 5)
+				fmt.Printf("%s \n", formattedJson(&m))
+			} else {
+				time.Sleep(time.Nanosecond * 10000)
 			}
 		} else {
 			time.Sleep(time.Nanosecond * 10000)
@@ -359,12 +438,12 @@ func transaction(sell, buy *Heap) {
 
 func buyTask(buyHeap *Heap) {
 	rand.Seed(time.Now().UnixNano())
-	for i := 0; i < 100000; i++ {
+	for i := 0; i < 10; i++ {
 
 		var item Order
-		item.Price = rand.Float64() * float64(100)
+		item.Price = rand.Float64() * float64(10)
 		item.Time = time.Now().UnixNano()
-		item.Num = rand.Float64() * float64(100)
+		item.Num = rand.Float64() * float64(5)
 		item.OID = i
 		item.UID = rand.Intn(5)
 		item.Priority = item.Price * float64(time.Now().UnixNano()-item.Time)
@@ -378,12 +457,12 @@ func buyTask(buyHeap *Heap) {
 
 func sellTask(sellHeap *Heap) {
 	rand.Seed(time.Now().UnixNano())
-	for i := 0; i < 100000; i++ {
+	for i := 0; i < 10; i++ {
 
 		var item Order
 		item.Price = rand.Float64() * float64(10)
 		item.Time = time.Now().UnixNano()
-		item.Num = rand.Float64() * float64(10)
+		item.Num = rand.Float64() * float64(5)
 		item.OID = -1 * i
 		item.UID = rand.Intn(5)
 		item.Priority = item.Price * float64(time.Now().UnixNano()-item.Time)
@@ -394,16 +473,45 @@ func sellTask(sellHeap *Heap) {
 	}
 }
 
+func formattedJson(obj *map[float64]float64) string {
+	fmt.Printf("obj is %v :", obj)
+	bs, err := json.Marshal(obj)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Print("bs is :" + string(bs))
+	var out bytes.Buffer
+	json.Indent(&out, bs, "", "\t")
+	fmt.Print("out string :" + out.String())
+	return out.String()
+}
+
 func main() {
+
+	var stopLock sync.Mutex
+	stop := false
+	stopChan := make(chan struct{}, 1)
+	signalChan := make(chan os.Signal, 1)
+	go func() {
+		//阻塞程序运行，直到收到终止的信号
+		var signal = <-signalChan
+		stopLock.Lock()
+		stop = true
+		stopLock.Unlock()
+		log.Printf("signal %v \n Cleaning before stop...", signal)
+		stopChan <- struct{}{}
+		os.Exit(0)
+	}()
+	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 
 	buyHeap, sellHeap := Heap{}, Heap{}
 	buyHeap.initHeap(5)
 	sellHeap.initHeap(5)
 	buyHeap.flag = ROOT_VALUE_MAX
 	sellHeap.flag = ROOT_VALUE_MIN
-	go buyTask(&buyHeap)
+	buyTask(&buyHeap)
 
-	go sellTask(&sellHeap)
+	sellTask(&sellHeap)
 
 	transaction(&sellHeap, &buyHeap)
 
