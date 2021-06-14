@@ -14,7 +14,7 @@ import (
 */
 
 type IPriority interface {
-	getPriority() (x int64)
+	getPriority() (x float64)
 }
 
 type Heap struct {
@@ -28,11 +28,11 @@ type Heap struct {
 	capacity int
 
 	/*mark the heap is a max value root heap or min value root heap*/
-	flag int64
+	flag float64
 }
 
-const ROOT_VALUE_MAX int64 = 1
-const ROOT_VALUE_MIN int64 = -1
+const ROOT_VALUE_MAX float64 = 1
+const ROOT_VALUE_MIN float64 = -1
 
 /*将新元素压入堆中*/
 func (this *Heap) insert(item IPriority) {
@@ -243,17 +243,20 @@ func (this Heap) copyAsSortArrayLimit(index int) []IPriority {
 }
 
 type Order struct {
-	Price int64 `json:"price"`
-	Num   int   `json:"num"`
-	Time  int64 `json:"time"`
+	OID      int
+	UID      int
+	Price    float64 `json:"price"`
+	Num      float64 `json:"num"`
+	Time     int64   `json:"time"`
+	Priority float64
 }
 
-func (this Order) getPriority() int64 {
-	return this.Price * (time.Hour.Nanoseconds() - this.Time)
+func (this Order) getPriority() float64 {
+	return this.Priority
 }
 
-func copyAsMapTopPriceLimit(arr []IPriority, limit int) map[int64]int {
-	orderMap := make(map[int64]int)
+func copyAsMapTopPriceLimit(arr []IPriority, limit int) map[float64]float64 {
+	orderMap := make(map[float64]float64)
 	keyCount := 0
 	for i := 0; i < len(arr); i++ {
 
@@ -283,9 +286,128 @@ func copyAsMapTopPriceLimit(arr []IPriority, limit int) map[int64]int {
 	return orderMap
 }
 
+func peekOrder(heap *Heap) Order {
+	var nilOrder Order
+	if heap.size > 0 {
+		top, _ := heap.peek()
+		switch order := top.(type) {
+		case Order:
+			return order
+		default:
+			fmt.Println("unknown buyTopOrder type ")
+			return nilOrder
+		}
+	} else {
+		return nilOrder
+	}
+
+}
+
+func onTransaction(sell, buy Order, transactionNum float64) {
+
+	fmt.Printf("\nsellOid:%d\tbuyOid:%d", sell.OID, buy.OID)
+	fmt.Printf("\nsellUid:%d\tbuyUid:%d", sell.UID, buy.UID)
+	fmt.Printf("\nsellPrice:%f\tbuyPrice:%f", sell.Price, buy.Price)
+	fmt.Printf("\nsellhold:%f\tbuyhold:%f", sell.Num-transactionNum, buy.Num-transactionNum)
+	fmt.Printf("\nsellNum:%f\tbuyNum:%f\n\n", transactionNum, transactionNum)
+
+}
+
+func transaction(sell, buy *Heap) {
+	var count = 0
+
+	for {
+		if sell.size > 0 && buy.size > 0 {
+			var sellTopOrder Order
+			var buyTopOrder Order
+			var transactionNum float64
+			//var transactionPrice int
+
+			sellTopOrder = peekOrder(sell)
+			buyTopOrder = peekOrder(buy)
+
+			if sellTopOrder.Price <= buyTopOrder.Price {
+				//transactionPrice = int(sellTopOrder.Price)
+				if sellTopOrder.Num <= buyTopOrder.Num {
+					transactionNum = sellTopOrder.Num
+				} else {
+					transactionNum = buyTopOrder.Num
+				}
+				onTransaction(sellTopOrder, buyTopOrder, transactionNum)
+
+				sellTopOrder.Num = sellTopOrder.Num - transactionNum
+				buyTopOrder.Num = buyTopOrder.Num - transactionNum
+
+				if sellTopOrder.Num <= 0 {
+					sell.poll()
+				}
+
+				if sellTopOrder.Num <= 0 {
+					sell.poll()
+				}
+				count++
+
+			}
+		} else {
+			time.Sleep(time.Nanosecond * 10000)
+			//runtime.Gosched()
+			//select {}
+			//fmt.Print("all order is deal closed \n")
+		}
+	}
+}
+
+func buyTask(buyHeap *Heap) {
+	rand.Seed(time.Now().UnixNano())
+	for i := 0; i < 100000; i++ {
+
+		var item Order
+		item.Price = rand.Float64() * float64(100)
+		item.Time = time.Now().UnixNano()
+		item.Num = rand.Float64() * float64(100)
+		item.OID = i
+		item.UID = rand.Intn(5)
+		item.Priority = item.Price * float64(time.Now().UnixNano()-item.Time)
+		buyHeap.insert(item)
+		//fmt.Printf("buy Task: %v \n", item)
+		//fmt.Printf("buy list : %v \n", copyAsMapTopPriceLimit(buyHeap.copyAsArray(), 5))
+		//time.Sleep(time.Second * 5)
+
+	}
+}
+
+func sellTask(sellHeap *Heap) {
+	rand.Seed(time.Now().UnixNano())
+	for i := 0; i < 100000; i++ {
+
+		var item Order
+		item.Price = rand.Float64() * float64(10)
+		item.Time = time.Now().UnixNano()
+		item.Num = rand.Float64() * float64(10)
+		item.OID = -1 * i
+		item.UID = rand.Intn(5)
+		item.Priority = item.Price * float64(time.Now().UnixNano()-item.Time)
+		sellHeap.insert(item)
+		//fmt.Printf("sell Task: %v \n", item)
+		//fmt.Printf("sell list : %v \n", copyAsMapTopPriceLimit(sellHeap.copyAsArray(), 5))
+		//time.Sleep(time.Second * 5)
+	}
+}
+
 func main() {
 
-	maxHeap, minHeap := Heap{}, Heap{}
+	buyHeap, sellHeap := Heap{}, Heap{}
+	buyHeap.initHeap(5)
+	sellHeap.initHeap(5)
+	buyHeap.flag = ROOT_VALUE_MAX
+	sellHeap.flag = ROOT_VALUE_MIN
+	go buyTask(&buyHeap)
+
+	go sellTask(&sellHeap)
+
+	transaction(&sellHeap, &buyHeap)
+
+	/*maxHeap, minHeap := Heap{}, Heap{}
 	maxHeap.initHeap(5)
 	minHeap.initHeap(5)
 	maxHeap.flag = ROOT_VALUE_MAX
@@ -329,7 +451,7 @@ func main() {
 
 	fmt.Printf("limit soft data : %v", copyAsMapTopPriceLimit(maxHeap.copyAsArray(), 5))
 	//fmt.Printf("堆拷贝:%v \n", maxHeap.copyAsArray())
-
+	*/
 	/*for i := 0; i < 6; i++ {
 
 		var item HeapItem
