@@ -36,6 +36,8 @@ type Heap struct {
 
 	/*mark the heap is a max value root heap or min value root heap*/
 	flag float64
+
+	head *sync.RWMutex
 }
 
 const ROOT_VALUE_MAX float64 = 1
@@ -43,6 +45,8 @@ const ROOT_VALUE_MIN float64 = -1
 
 /*将新元素压入堆中*/
 func (this *Heap) insert(item IPriority) {
+	/*this.head.Lock()
+	defer this.head.Unlock()*/
 	if this.size == this.capacity {
 		newHeap := make([]IPriority, this.capacity*2)
 		copy(newHeap, this.heap)
@@ -82,6 +86,7 @@ func (this *Heap) updateHead(item IPriority) {
 }
 
 func (this *Heap) update(index int, item IPriority) {
+
 	if this.size-1 < index {
 		return
 	}
@@ -97,6 +102,8 @@ func (this *Heap) initHeap(cap int) {
 	this.flag = ROOT_VALUE_MAX //default heap has max value root
 	this.heap = make([]IPriority, cap)
 	this.size = 0
+	this.head = new(sync.RWMutex)
+
 }
 
 /* 通过节点索引获取该节点左子节点索引 */
@@ -146,6 +153,18 @@ func (this *Heap) parent(index int) IPriority {
 
 /* 交换位置 */
 func (this *Heap) swap(index1 int, index2 int) {
+
+	/*if index1 == 0 || index2 == 0 {
+
+		func() {
+			this.head.Lock()
+			defer this.head.Unlock()
+			this.heap[index1], this.heap[index2] = this.heap[index2], this.heap[index1]
+			return
+		}()
+
+	}*/
+
 	this.heap[index1], this.heap[index2] = this.heap[index2], this.heap[index1]
 }
 
@@ -299,7 +318,7 @@ func copyAsMapTopPriceLimit(arr []IPriority, limit int) map[float64]float64 {
 				}
 			}
 		default:
-			fmt.Println("unknown type")
+			fmt.Printf("unknown type %T \n", t)
 		}
 
 	}
@@ -315,7 +334,7 @@ func peekOrder(heap *Heap) Order {
 		case Order:
 			return order
 		default:
-			fmt.Println("unknown buyTopOrder type ")
+			fmt.Printf("unknown peekOrder type %T \n", order)
 			return nilOrder
 		}
 	} else {
@@ -332,7 +351,7 @@ func pollOrder(heap *Heap) Order {
 		case Order:
 			return order
 		default:
-			fmt.Println("unknown buyTopOrder type ")
+			fmt.Printf("unknown pollOrder type %T \n", order)
 			return nilOrder
 		}
 	} else {
@@ -357,82 +376,122 @@ func onTransaction(sell, buy Order, transactionNum float64) {
 			sell.Price, buy.Price,
 			sell.Num-transactionNum, buy.Num-transactionNum,
 			transactionNum, transactionNum)
-
 	}()
 
 }
 
 func transaction(sell, buy *Heap) {
-	var count = 0
 
 	for {
-		if sell.size > 0 && buy.size > 0 {
-			var sellTopOrder Order
-			var buyTopOrder Order
-			var transactionNum float64
-			//var transactionPrice int
+		isBreak := func() bool {
+			/*sell.add.Lock()
+			buy.add.Lock()
+			defer sell.add.Unlock()
+			defer buy.add.Unlock()*/
+			if sell.size > 0 && buy.size > 0 {
+				var sellTopOrder Order
+				var buyTopOrder Order
+				var transactionNum float64
+				//var transactionPrice int
 
-			sellTopOrder = peekOrder(sell)
-			buyTopOrder = peekOrder(buy)
+				//lock.RLock()
 
-			if sellTopOrder.Price <= buyTopOrder.Price {
-				//transactionPrice = int(sellTopOrder.Price)
-				if sellTopOrder.Num <= buyTopOrder.Num {
-					transactionNum = sellTopOrder.Num
-				} else {
-					transactionNum = buyTopOrder.Num
-				}
-				onTransaction(sellTopOrder, buyTopOrder, transactionNum)
+				sellTopOrder = peekOrder(sell)
+				buyTopOrder = peekOrder(buy)
 
-				sellTopOrder.Num = sellTopOrder.Num - transactionNum
-				buyTopOrder.Num = buyTopOrder.Num - transactionNum
+				if sellTopOrder.Price <= buyTopOrder.Price {
+					//transactionPrice = int(sellTopOrder.Price)
+					if sellTopOrder.Num <= buyTopOrder.Num {
+						transactionNum = sellTopOrder.Num
+					} else {
+						transactionNum = buyTopOrder.Num
+					}
 
-				sell.updateHead(sellTopOrder)
-				buy.updateHead(buyTopOrder)
+					onTransaction(sellTopOrder, buyTopOrder, transactionNum)
 
-				if sellTopOrder.Num <= 0 {
+					sellTopOrder.Num = sellTopOrder.Num - transactionNum
+					buyTopOrder.Num = buyTopOrder.Num - transactionNum
+
+					func() {
+						sell.head.Lock()
+						buy.head.Lock()
+						defer sell.head.Unlock()
+						defer buy.head.Unlock()
+						sell.updateHead(sellTopOrder)
+						buy.updateHead(buyTopOrder)
+					}()
+
+					// deal close
 					//sell.poll()
-					pollSell := pollOrder(sell)
-					//test code
-					if pollSell.OID != sellTopOrder.OID {
-						log.Printf("sell Oid not match %v %v \n", pollSell.OID, sellTopOrder.OID)
-						break
-					}
-					if pollSell.Num != sellTopOrder.Num {
-						log.Printf("sell num not match %v %v \n", pollSell.Num, sellTopOrder.Num)
-						break
-					}
-				}
-
-				if buyTopOrder.Num <= 0 {
 					//buy.poll()
-					pollBuy := pollOrder(buy)
-					//test code
-					if pollBuy.OID != buyTopOrder.OID {
-						log.Printf("buy Oid not match %v %v \n", pollBuy.OID, buyTopOrder.OID)
-						break
+					//pollOrder(sell)
+					//pollOrder(buy)
+					//
+					/*if sellTopOrder.Num > 0 {
+						sell.insert(sellTopOrder)
 					}
-					if pollBuy.Num != buyTopOrder.Num {
-						log.Printf("buy Num not match %v %v \n", pollBuy.Num, buyTopOrder.Num)
-						break
-					}
-				}
-				count++
+					if buyTopOrder.Num > 0 {
+						buy.insert(buyTopOrder)
+					}*/
 
-				fmt.Printf("buy heap sise is %d sell heap size is %d\n", buy.size, sell.size)
-				m := copyAsMapTopPriceLimit(buy.heap, 5)
-				fmt.Printf("%s \n", formattedJson(&m))
-				m = copyAsMapTopPriceLimit(sell.heap, 5)
-				fmt.Printf("%s \n", formattedJson(&m))
+					if sellTopOrder.Num <= 0 {
+						//sell.poll()
+						pollSell := pollOrder(sell)
+						//test code
+						if pollSell.OID != sellTopOrder.OID {
+							log.Printf("sell Oid not match %v %v \n", pollSell.OID, sellTopOrder.OID)
+							//break
+							return true
+						}
+						if pollSell.Num != sellTopOrder.Num {
+							log.Printf("sell num not match %v %v \n", pollSell.Num, sellTopOrder.Num)
+							return true
+						}
+					}
+
+					if buyTopOrder.Num <= 0 {
+						//buy.poll()
+						pollBuy := pollOrder(buy)
+						//test code
+						if pollBuy.OID != buyTopOrder.OID {
+							log.Printf("buy Oid not match %v %v \n", pollBuy.OID, buyTopOrder.OID)
+							//break
+							return true
+						}
+						if pollBuy.Num != buyTopOrder.Num {
+							log.Printf("buy Num not match %v %v \n", pollBuy.Num, buyTopOrder.Num)
+							//break
+							return true
+						}
+
+					}
+
+					fmt.Printf("buy heap sise is %d sell heap size is %d\n", buy.size, sell.size)
+
+					/*m := copyAsMapTopPriceLimit(buy.heap[:buy.size], 5)
+					fmt.Printf("%s \n", formattedJson(&m))
+					m = copyAsMapTopPriceLimit(sell.heap[:sell.size], 5)
+					fmt.Printf("%s \n", formattedJson(&m))*/
+
+				} else {
+					time.Sleep(time.Nanosecond * 10000)
+				}
+
+				//lock.RUnlock()
 			} else {
 				time.Sleep(time.Nanosecond * 10000)
+				//runtime.Gosched()
+				//select {}
+				//fmt.Print("all order is deal closed \n")
 			}
-		} else {
-			time.Sleep(time.Nanosecond * 10000)
-			//runtime.Gosched()
-			//select {}
-			//fmt.Print("all order is deal closed \n")
+			return false
+		}()
+
+		if isBreak {
+
+			break
 		}
+
 	}
 }
 
@@ -460,7 +519,7 @@ func sellTask(sellHeap *Heap) {
 	for i := 0; i < 10; i++ {
 
 		var item Order
-		item.Price = rand.Float64() * float64(10)
+		item.Price = rand.Float64() * float64(100)
 		item.Time = time.Now().UnixNano()
 		item.Num = rand.Float64() * float64(5)
 		item.OID = -1 * i
@@ -489,14 +548,14 @@ func formattedJson(obj *map[float64]float64) string {
 func main() {
 
 	var stopLock sync.Mutex
-	stop := false
+	//stop := false
 	stopChan := make(chan struct{}, 1)
 	signalChan := make(chan os.Signal, 1)
 	go func() {
 		//阻塞程序运行，直到收到终止的信号
 		var signal = <-signalChan
 		stopLock.Lock()
-		stop = true
+		//stop = true
 		stopLock.Unlock()
 		log.Printf("signal %v \n Cleaning before stop...", signal)
 		stopChan <- struct{}{}
@@ -513,7 +572,19 @@ func main() {
 
 	sellTask(&sellHeap)
 
-	transaction(&sellHeap, &buyHeap)
+	for i := 0; i < 2; i++ {
+
+		go transaction(&sellHeap, &buyHeap)
+	}
+
+	for i := 0; i < 100000; i++ {
+
+		buyTask(&buyHeap)
+
+		sellTask(&sellHeap)
+	}
+
+	time.Sleep(time.Minute * 10)
 
 	/*maxHeap, minHeap := Heap{}, Heap{}
 	maxHeap.initHeap(5)
