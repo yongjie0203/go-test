@@ -10,9 +10,9 @@ import (
 	"syscall"
 	"time"
 
-	"yingyi.cn/go-trade-core/heap"
-	"yingyi.cn/go-trade-core/order"
-	"yingyi.cn/go-trade-core/trade"
+	"github.com/yongjie0203/go-trade-core/heap"
+	"github.com/yongjie0203/go-trade-core/order"
+	"github.com/yongjie0203/go-trade-core/trade"
 )
 
 func buyTask(buyHeap *heap.Heap) {

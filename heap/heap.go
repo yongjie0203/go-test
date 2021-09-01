@@ -10,7 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"sort"
-	"strconv"
+
 	"sync"
 	"syscall"
 	"time"
@@ -371,13 +371,12 @@ func (h Heap) CopyAsMapTopPriceLimit(limit int) map[string]float64 {
 	return orderMap
 }
 
-
-func peekOrder(heap *Heap) Order {
-	var nilOrder Order
+func peekOrder(heap *Heap) order.Order {
+	var nilOrder order.Order
 	if heap.size > 0 {
-		top, _ := heap.peek()
+		top, _ := heap.Peek()
 		switch order := top.(type) {
-		case Order:
+		case order.Order:
 			return order
 		default:
 			fmt.Printf("unknown peekOrder type %T \n", order)
@@ -389,12 +388,12 @@ func peekOrder(heap *Heap) Order {
 
 }
 
-func pollOrder(heap *Heap) Order {
-	var nilOrder Order
+func pollOrder(heap *Heap) order.Order {
+	var nilOrder order.Order
 	if heap.size > 0 {
-		top, _ := heap.poll()
+		top, _ := heap.Poll()
 		switch order := top.(type) {
-		case Order:
+		case order.Order:
 			return order
 		default:
 			fmt.Printf("unknown pollOrder type %T \n", order)
@@ -406,7 +405,7 @@ func pollOrder(heap *Heap) Order {
 
 }
 
-func onTransaction(sell, buy Order, transactionNum float64) {
+func onTransaction(sell, buy order.Order, transactionNum float64) {
 
 	var content = `
 	sellOid:%d	buyOid:%d
@@ -435,8 +434,8 @@ func transaction(sell, buy *Heap) {
 			defer sell.add.Unlock()
 			defer buy.add.Unlock()*/
 			if sell.size > 0 && buy.size > 0 {
-				var sellTopOrder Order
-				var buyTopOrder Order
+				var sellTopOrder order.Order
+				var buyTopOrder order.Order
 				var transactionNum float64
 				//var transactionPrice int
 
@@ -545,7 +544,7 @@ func buyTask(buyHeap *Heap) {
 	rand.Seed(time.Now().UnixNano())
 	for i := 0; i < 10; i++ {
 
-		var item Order
+		var item order.Order
 		item.Price = rand.Float64() * float64(10)
 		item.Time = time.Now().UnixNano()
 		item.Num = rand.Float64() * float64(5)
@@ -564,7 +563,7 @@ func sellTask(sellHeap *Heap) {
 	rand.Seed(time.Now().UnixNano())
 	for i := 0; i < 10; i++ {
 
-		var item Order
+		var item order.Order
 		item.Price = rand.Float64() * float64(100)
 		item.Time = time.Now().UnixNano()
 		item.Num = rand.Float64() * float64(5)
@@ -592,8 +591,6 @@ func FormattedJson(obj interface{}) string {
 	//fmt.Print("out string :" + out.String())
 	return out.String()
 }
-
-
 
 func main() {
 
@@ -635,8 +632,6 @@ func main() {
 		//sort.Sort(sort.StringSlice(keys))
 	}
 
-
 	time.Sleep(time.Minute * 10)
-
 
 }

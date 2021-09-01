@@ -2,9 +2,9 @@ package queue
 
 import (
 	"fmt"
+	"github.com/yongjie0203/go-trade-core/order"
 	"math/rand"
 	"time"
-	"github.com/yongjie0203/go-trade-core/order"
 )
 
 type ArrayPriorityQueue struct {
